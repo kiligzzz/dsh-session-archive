@@ -77,7 +77,7 @@ dsh plugin --profile web add "$PWD"
 ## 卸载
 
 ```sh
-dsh plugin --profile web remove @dsh-external/dsh-session-archive
+dsh plugin --profile web remove @kiligzzz/dsh-session-archive
 ```
 
 ## 工作原理

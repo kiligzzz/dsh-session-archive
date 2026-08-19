@@ -1,5 +1,5 @@
 /**
- * @dsh-external/dsh-session-archive — surface, restore, and delete the
+ * @kiligzzz/dsh-session-archive — surface, restore, and delete the
  * registry-global archived-session set.
  *
  * The harness workspace registry keeps an `archivedSessionIds` list that hides
@@ -12,7 +12,7 @@
  *     session from its workspace accounting and removes its on-disk log,
  *   - a same-origin HTTP route `/_dsh/session-archive` lets the Web bundle
  *     read, restore, and delete.
- * @module @dsh-external/dsh-session-archive
+ * @module @kiligzzz/dsh-session-archive
  */
 
 import { rm } from 'node:fs/promises'
@@ -26,7 +26,7 @@ import type {} from '@deepseek-ai/dsh-host-webserver'
 export const ROUTE = '/_dsh/session-archive'
 
 /** Stable Cordis plugin name. */
-export const name = '@dsh-external/dsh-session-archive'
+export const name = '@kiligzzz/dsh-session-archive'
 
 /** Services required before restore/delete can be called. */
 export const inject = ['workspaceRegistry', 'sessions', 'sessionPersistence']
@@ -302,7 +302,12 @@ export class WorkspaceArchive {
   }> {
     if (typeof sessionId !== 'string' || sessionId.length === 0) throw new TypeError('sessionId must be a non-empty string')
     if (this.sessions.get(sessionId) !== undefined) {
-      throw new Error(`cannot delete live session '${sessionId}'`)
+      // Distinct error code so the client can render a friendly localized
+      // message ("the session is still open") instead of this raw English
+      // guard message.
+      const error = new Error(`cannot delete live session '${sessionId}'`) as Error & { code?: string }
+      error.code = 'delete-live'
+      throw error
     }
 
     // Find the owning workspace (if any) for cwd + detach. The entity's
@@ -397,7 +402,15 @@ async function handle(archive: WorkspaceArchive, req: IncomingMessage, res: Serv
       responseJson(res, 200, { ok: true, value: { deleted, archivedSessionIds: archive.list() } })
     }
   } catch (error) {
-    const code = parsed.action === 'restore' ? 'restore-failed' : parsed.action === 'preview' ? 'preview-failed' : 'delete-failed'
+    // Prefer the error's own code when present (e.g. `delete-live`), so the
+    // client can localize the message instead of surfacing the raw English
+    // guard text.
+    const errorCode = typeof error === 'object' && error !== null
+      ? (error as { code?: unknown }).code
+      : undefined
+    const code = typeof errorCode === 'string' && errorCode.length > 0
+      ? errorCode
+      : parsed.action === 'restore' ? 'restore-failed' : parsed.action === 'preview' ? 'preview-failed' : 'delete-failed'
     responseJson(res, 400, { ok: false, error: { code, message: publicMessage(error) } })
   }
 }

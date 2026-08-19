@@ -1,5 +1,5 @@
 /**
- * @dsh-external/dsh-session-archive — browser half.
+ * @kiligzzz/dsh-session-archive — browser half.
  *
  * Adds an "Archived sessions" entry in the sidebar footer. Clicking it opens a
  * fixed-size panel that lists every registry-archived session (title + owning
@@ -38,6 +38,7 @@ const en = {
   deleteWarning: 'This permanently deletes the session and its log from disk. This cannot be undone.',
   deleteConfirm: 'Delete',
   deleteFailed: 'Delete failed',
+  deleteLiveError: 'This session is still open. Close it in the sidebar first, then delete it again.',
   failed: 'Action failed',
   untitled: 'Untitled session',
   ungrouped: 'Ungrouped',
@@ -94,6 +95,7 @@ const zh: Record<LocaleKey, string> = {
   deleteWarning: '这将从磁盘上永久删除该会话及其日志，且无法撤销。',
   deleteConfirm: '删除',
   deleteFailed: '删除失败',
+  deleteLiveError: '该会话仍在运行中。请先在侧边栏关闭它，再删除。',
   failed: '操作失败',
   untitled: '未命名会话',
   ungrouped: '未分组',
@@ -398,9 +400,11 @@ function PreviewModal({ session, loading, error, preview, onClose, t }: {
   )
 }
 
-function PanelBody({ useWorkspaces, useSessions, t }: {
+function PanelBody({ useWorkspaces, useSessions, refresh, t }: {
   useWorkspaces: FooterProps['useWorkspaces']
   useSessions: FooterProps['useSessions']
+  /** Re-pull the workspace + session baselines so the list drops deleted ids. */
+  refresh: () => Promise<void>
   t: Translate
 }) {
   const archivedIds = useWorkspaces((state) => state.archivedSessionIds) as string[]
@@ -462,15 +466,19 @@ function PanelBody({ useWorkspaces, useSessions, t }: {
     void postAction('delete', id).then((result) => {
       setBusy(null)
       if (!result.ok) {
-        setError(result.error.message)
+        // Friendly, localized message for the known "still open" case; any
+        // other failure falls back to the generic delete-failed text.
+        const message = result.error.code === 'delete-live'
+          ? t('deleteLiveError')
+          : t('deleteFailed')
+        setError(message)
         return
       }
       setDeletedIds((ids) => (ids.includes(id) ? ids : [...ids, id]))
-      // The host deleted the on-disk log, but the client's session-list store
-      // (sessions.byId) retains a stale entry until the next baseline pull,
-      // which would make it surface in "Ungrouped". Reload so the session list
-      // re-fetches and the deleted session drops out of the sidebar.
-      window.location.reload()
+      // Refresh the workspace + session baselines instead of reloading the
+      // whole page: archivedSessionIds drops the deleted id and byId drops
+      // the stale entry, so the panel re-renders with the row gone.
+      void refresh()
     })
   }
 
@@ -610,7 +618,10 @@ function ArchiveIcon(): ReactNode {
 }
 
 /** Footer entry that opens the archived-session panel. */
-function FooterEntry({ useWorkspaces, useSessions, t, wide, ...rest }: FooterProps) {
+function FooterEntry({ useWorkspaces, useSessions, refresh, t, wide, ...rest }: FooterProps & {
+  /** Re-pull the workspace + session baselines after a delete. */
+  refresh: () => Promise<void>
+}) {
   const [open, setOpen] = useState(false)
   // The sidebar shell always passes `wide` (renderSlot("sidebar.footer.action",
   // { wide })): true expanded, false collapsed to the icon rail. It is the only
@@ -642,7 +653,7 @@ function FooterEntry({ useWorkspaces, useSessions, t, wide, ...rest }: FooterPro
             closeLabel={translate('close')}
             description={translate('intro')}
           >
-            <PanelBody useWorkspaces={useWorkspaces} useSessions={useSessions} t={translate} />
+            <PanelBody useWorkspaces={useWorkspaces} useSessions={useSessions} refresh={refresh} t={translate} />
           </Modal>
         )
         : null}
@@ -719,11 +730,11 @@ div:has(> [data-slot="sidebar.footer.action"]){flex-direction:column}
 `
 
 function installStyles(): () => void {
-  const id = '@dsh-external/dsh-session-archive/client'
+  const id = '@kiligzzz/dsh-session-archive/client'
   const existing = document.querySelector<HTMLStyleElement>(`style[data-plugin-css="${id}"]`)
   if (existing !== null) return () => {}
   const style = document.createElement('style')
-  style.dataset.plugin = '@dsh-external/dsh-session-archive'
+  style.dataset.plugin = '@kiligzzz/dsh-session-archive'
   style.dataset.pluginCss = id
   style.textContent = CSS
   document.head.appendChild(style)
@@ -735,22 +746,34 @@ export const inject = ['slots', 'locale']
 
 /** Register the sidebar footer entry and its panel. */
 export function apply(ctx: ClientApi): void {
-  ctx.effect(installStyles, '@dsh-external/dsh-session-archive: styles')
-  ctx.effect(() => ctx.locale.register(NS, { en, zh }), '@dsh-external/dsh-session-archive: locale')
+  ctx.effect(installStyles, '@kiligzzz/dsh-session-archive: styles')
+  ctx.effect(() => ctx.locale.register(NS, { en, zh }), '@kiligzzz/dsh-session-archive: locale')
   const t: Translate = ctx.locale.bind(NS)
+  // Re-pull the workspace + session baselines. The optional `workspaces` /
+  // `sessions` services exist on the client runtime; a delete already mutated
+  // the host store, so this refreshes the local snapshots without a reload.
+  const refresh = async (): Promise<void> => {
+    const workspaces = ctx.get('workspaces') as { refresh?: () => Promise<unknown> } | undefined
+    const sessions = ctx.get('sessions') as { refresh?: () => Promise<unknown> } | undefined
+    await Promise.allSettled([
+      workspaces?.refresh?.(),
+      sessions?.refresh?.(),
+    ])
+  }
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action',
     id: 'session-archive',
     // 排在插件市场（community-market order=10）上方、Cordis 面板（默认 order=0）下方。
     order: 5,
     label: () => t('nav'),
-    inject: () => ({ t }),
+    inject: () => ({ t, refresh }),
   }, FooterEntry))
 }
 
 /** Minimal structural shape of the client context this plugin requires. */
 interface ClientApi {
   effect(fn: () => unknown, label?: string): void
+  get(name: string): unknown
   slots: {
     inject(name: 'sidebar.footer.action', callback: () => unknown): unknown
     register(options: unknown, component: unknown): unknown

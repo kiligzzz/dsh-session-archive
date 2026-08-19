@@ -1,7 +1,7 @@
-# @dsh-external/dsh-session-archive bundle patch: mounts the host plugin into
+# @kiligzzz/dsh-session-archive bundle patch: mounts the host plugin into
 # the profile layer stack. The host plugin registers a same-origin route used
 # by the Web bundle to restore (unarchive) sessions from the registry-global
 # archived-session set. No configuration surface.
 - insert:
     - id: session-archive
-      name: '@dsh-external/dsh-session-archive'
+      name: '@kiligzzz/dsh-session-archive'

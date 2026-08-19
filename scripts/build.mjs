@@ -1,4 +1,4 @@
-// Build @dsh-external/dsh-session-archive.
+// Build @kiligzzz/dsh-session-archive.
 //
 // Host  : bundle src/index.ts  -> lib/index.js  (ESM, harness deps external)
 // Client: bundle src/client/index.tsx -> lib/client.js as a
@@ -49,7 +49,7 @@ async function client() {
   })
   const code = buildResult.outputFiles.find((f) => f.path === outfile)?.text ?? ''
   const wrapped = [
-    'window.__ModuleLoader__.load({ id: "@dsh-external/dsh-session-archive", factory: (require) => {',
+    'window.__ModuleLoader__.load({ id: "@kiligzzz/dsh-session-archive", factory: (require) => {',
     'var module = { exports: {} }; var exports = module.exports;',
     code,
     'return module.exports; } });',
