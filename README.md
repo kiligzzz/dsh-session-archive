@@ -9,6 +9,25 @@ search, flat list), but ships no UI to view or restore them. This plugin adds
 that missing capability as a **sidebar-footer entry** that opens a panel of
 all archived sessions, each with a one-click Restore.
 
+## 中文说明
+
+一个 DeepSeek Harness Web 插件：把工作区注册表中的**已归档会话**呈现出来，支持查看、预览、恢复（取消归档）与删除。
+
+harness 会把归档的会话从所有界面（工作区分组、未分组、内容搜索、平铺列表）中隐藏，却不提供任何查看或恢复入口。本插件在**侧边栏底部**添加一个入口，打开面板列出全部已归档会话：
+
+- **按工作区目录分组**（未分组排最后），分组可折叠，支持**实时标题搜索**
+- **只读预览**：点击会话标题打开弹窗，从磁盘日志渲染完整对话（用户/助手气泡、工具调用），不影响归档状态
+- **一键恢复**：会话重新出现在原分组中（幂等，经注册表写入链串行化持久化）
+- **删除（带二次确认）**：永久移除归档记录并删除磁盘日志目录；活跃会话拒绝删除
+
+安装（需 Web profile，`dsh` 与 `pnpm` 可用）：
+
+```sh
+dsh plugin --profile web add https://github.com/kiligzzz/dsh-session-archive
+```
+
+安装后重启 Web profile 并刷新页面，侧边栏底部即出现「已归档会话」入口。
+
 ## What it adds
 
 - **Sidebar footer → “Archived sessions”** — an icon entry that opens a wide,
