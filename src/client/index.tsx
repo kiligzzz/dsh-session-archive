@@ -41,16 +41,40 @@ const en = {
   failed: 'Action failed',
   untitled: 'Untitled session',
   ungrouped: 'Ungrouped',
+  now: 'now',
   close: 'Close',
   title: 'Archived sessions',
   intro: 'These sessions are hidden from every list. Restore one to bring it back into its directory, or delete it permanently.',
   preview: 'Preview',
   previewTitle: 'Session preview',
-  previewNote: 'Showing user questions only (system-injected content is hidden).',
   previewLoading: 'Loading…',
   previewEmpty: 'No questions to show.',
   previewFailed: 'Preview failed',
 } as const
+
+/** Relative-time bucket label ("now" / "5min" / "3h" / "2d"), matching the
+ *  sidebar session rows' compact recency style. */
+function relativeTimeLabel(updatedAt: number, now: number, locale: string): string {
+  const diff = Math.max(0, now - updatedAt)
+  const min = Math.floor(diff / 60_000)
+  if (min < 1) return locale === 'zh' ? '刚刚' : 'now'
+  if (min < 60) return locale === 'zh' ? `${min}分钟前` : `${min}min`
+  const hours = Math.floor(min / 60)
+  if (hours < 24) return locale === 'zh' ? `${hours}小时前` : `${hours}h`
+  const days = Math.floor(hours / 24)
+  if (days < 30) return locale === 'zh' ? `${days}天前` : `${days}d`
+  const months = Math.floor(days / 30)
+  if (months < 12) return locale === 'zh' ? `${months}个月前` : `${months}mo`
+  const years = Math.floor(months / 12)
+  return locale === 'zh' ? `${years}年前` : `${years}y`
+}
+
+/** Absolute local timestamp for the hover title ("2026-08-14 18:07"). */
+function absoluteTimeLabel(updatedAt: number): string {
+  const d = new Date(updatedAt)
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
 
 type LocaleKey = keyof typeof en
 
@@ -72,12 +96,12 @@ const zh: Record<LocaleKey, string> = {
   failed: '操作失败',
   untitled: '未命名会话',
   ungrouped: '未分组',
+  now: '刚刚',
   close: '关闭',
   title: '已归档会话',
   intro: '这些会话已从所有列表中隐藏。恢复一个即可把它放回原目录，或永久删除它。',
   preview: '预览',
   previewTitle: '会话预览',
-  previewNote: '仅展示用户问题（系统注入内容已隐藏）。',
   previewLoading: '加载中…',
   previewEmpty: '没有可显示的问题。',
   previewFailed: '预览失败',
@@ -112,6 +136,7 @@ interface SessionSummary {
   id: string
   title?: string | undefined
   cwd?: string | undefined
+  updatedAt?: number | undefined
 }
 
 interface WorkspaceSummary {
@@ -131,7 +156,7 @@ interface SessionGroup {
   key: string
   label: string
   path?: string | undefined
-  sessions: Array<{ summary: SessionSummary; title: string }>
+  sessions: Array<{ summary: SessionSummary; title: string; updatedAt?: number | undefined }>
 }
 
 interface ApiSuccess {
@@ -251,7 +276,7 @@ function buildGroups(
           sessions: [],
         })
     if (workspace !== undefined) groups.set(workspace.workspaceId, group)
-    group.sessions.push({ summary, title })
+    group.sessions.push({ summary, title, updatedAt: summary.updatedAt })
   }
 
   const ordered: SessionGroup[] = []
@@ -261,7 +286,8 @@ function buildGroups(
   }
   if (ungrouped.sessions.length > 0) ordered.push(ungrouped)
   for (const group of ordered) {
-    group.sessions.sort((a, b) => a.title.localeCompare(b.title))
+    // Newest activity first; sessions without a timestamp sink to the end.
+    group.sessions.sort((a, b) => (b.updatedAt ?? -Infinity) - (a.updatedAt ?? -Infinity))
   }
   return ordered
 }
@@ -270,8 +296,9 @@ function matchesTitle(value: string, query: string): boolean {
   return value.toLowerCase().includes(query)
 }
 
-function ArchivedRow({ title, busy, restored, onPreview, onRestore, onDeleteRequest, t }: {
+function ArchivedRow({ title, updatedAt, busy, restored, onPreview, onRestore, onDeleteRequest, t }: {
   title: string
+  updatedAt?: number | undefined
   busy: boolean
   restored: boolean
   onPreview: () => void
@@ -279,6 +306,8 @@ function ArchivedRow({ title, busy, restored, onPreview, onRestore, onDeleteRequ
   onDeleteRequest: () => void
   t: Translate
 }) {
+  const now = Date.now()
+  const locale = t('now') === '刚刚' ? 'zh' : 'en'
   return (
     <li className="dsa-row" data-restored={restored || undefined}>
       <StateDot state={restored ? 'ready' : 'archived'} />
@@ -291,6 +320,17 @@ function ArchivedRow({ title, busy, restored, onPreview, onRestore, onDeleteRequ
       >
         <strong>{title}</strong>
       </button>
+      {updatedAt !== undefined
+        ? (
+          <time
+            className="dsa-row-time"
+            dateTime={new Date(updatedAt).toISOString()}
+            title={absoluteTimeLabel(updatedAt)}
+          >
+            {relativeTimeLabel(updatedAt, now, locale)}
+          </time>
+        )
+        : null}
       <Button size="sm" variant="outline" disabled={busy || restored} onClick={onRestore}>
         {restored ? t('restored') : busy ? t('restoring') : t('restore')}
       </Button>
@@ -332,7 +372,6 @@ function PreviewModal({ session, loading, error, preview, onClose, t }: {
           {preview?.cwd !== undefined && preview.cwd.length > 0 ? <code>{preview.cwd}</code> : null}
           {preview !== undefined ? <span className="dsa-preview-count">{preview.questions.length}</span> : null}
         </header>
-        <p className="dsa-preview-note">{t('previewNote')}</p>
         {loading
           ? <p className="dsa-preview-empty">{t('previewLoading')}</p>
           : error !== undefined
@@ -488,10 +527,11 @@ function PanelBody({ useWorkspaces, useSessions, t }: {
                   {!isCollapsed
                     ? (
                       <ul className="dsa-list">
-                        {groupSessions.map(({ summary, title }) => (
+                        {groupSessions.map(({ summary, title, updatedAt }) => (
                           <ArchivedRow
                             key={summary.id}
                             title={title}
+                            updatedAt={updatedAt}
                             busy={busy === summary.id}
                             restored={restoredIds.includes(summary.id)}
                             onPreview={() => { openPreview(summary.id, title) }}
@@ -654,6 +694,7 @@ div:has(> [data-slot="sidebar.footer.action"]){flex-direction:column}
 .dsa-delete-warning strong{display:block;margin-bottom:4px;font-size:13px;color:var(--dsw-alias-fg-primary,#26231f);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dsa-delete-confirm{background:#cf5050!important;border-color:#cf5050!important}
 .dsa-row-main{min-width:0;flex:1;display:grid;gap:2px;padding:0;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.dsa-row-time{flex:none;font-size:11px;color:var(--dsw-alias-fg-muted,#77736d);white-space:nowrap;font-variant-numeric:tabular-nums;cursor:default}
 .dsa-row-main:hover strong{color:#6659c7}
 .dsa-row-main:focus-visible{outline:2px solid #7c6ff0;outline-offset:-2px;border-radius:6px}
 .dsa-row-main:disabled{cursor:default}
@@ -665,7 +706,6 @@ div:has(> [data-slot="sidebar.footer.action"]){flex-direction:column}
 .dsa-preview-head strong{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dsa-preview-head code{font-size:10px;color:var(--dsw-alias-fg-muted,#77736d);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .dsa-preview-count{margin-left:auto;flex:none;font-size:10px;padding:2px 8px;border-radius:999px;background:var(--dsw-alias-bg-layer-2,#f7f5f1);color:var(--dsw-alias-fg-muted,#77736d)}
-.dsa-preview-note{margin:0;padding:6px 10px;border-radius:8px;background:rgba(92,108,213,.08);color:#5149a6;font-size:11px;line-height:1.5}
 .dsa-preview-empty{margin:0;padding:12px 2px;color:var(--dsw-alias-fg-muted,#77736d);font-size:12px}
 .dsa-questions{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 .dsa-question{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid var(--dsw-alias-border-subtle,#dedbd5);border-radius:10px;background:var(--dsw-alias-bg-layer-1,#fff)}
