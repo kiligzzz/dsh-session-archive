@@ -49,6 +49,28 @@ dsh plugin --profile web add https://github.com/kiligzzz/dsh-session-archive
   `restore(sessionId)` / `deleteSession(sessionId)`) exposed to sibling host
   plugins.
 
+## Screenshots
+
+**Sidebar entry** — the plugin adds a bottom-of-sidebar button alongside
+Cordis Plugin and the Plugin Marketplace.
+
+![Sidebar entry](https://raw.githubusercontent.com/kiligzzz/dsh-session-archive/main/assets/1-sidebar-entry.png)
+
+**Panel** — archived sessions grouped by their owning workspace directory;
+each entry has a Restore button and a trash action.
+
+![Panel](https://raw.githubusercontent.com/kiligzzz/dsh-session-archive/main/assets/2-panel.png)
+
+**Live title search** — typing in the search box filters the list across all
+groups as you type.
+
+![Search](https://raw.githubusercontent.com/kiligzzz/dsh-session-archive/main/assets/3-search.png)
+
+**Read-only preview** — clicking a session title opens a modal rendering the
+full conversation from the on-disk log. The archived state is never touched.
+
+![Preview](https://raw.githubusercontent.com/kiligzzz/dsh-session-archive/main/assets/4-preview.png)
+
 ## Install
 
 Prereq: a DeepSeek Harness Web profile (`dsh` available, `pnpm` on PATH).
