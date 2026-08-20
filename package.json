@@ -1,6 +1,6 @@
 {
   "name": "@kiligzzz/dsh-session-archive",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A DeepSeek Harness Web-plugin that surfaces the registry-global archived-session set: list archived sessions in the sidebar and restore (unarchive) them.",
   "type": "module",
   "main": "lib/index.js",
