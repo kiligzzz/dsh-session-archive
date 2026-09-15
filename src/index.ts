@@ -159,11 +159,17 @@ interface WorkspaceEntityFace {
 
 /** Minimal face of `ctx.sessionPersistence` for cwd lookup and log reads. */
 interface SessionPersistenceFace {
-  inspect(id: string, signal?: AbortSignal): Promise<{ meta?: { cwd?: string; title?: string } }>
-  readFrom(id: string, fromSeq: number, signal?: AbortSignal): Promise<{
-    meta: { id: string; cwd?: string; title?: string }
-    events: SessionLogEvent[]
-  }>
+  stat(id: string, options?: { signal?: AbortSignal }): Promise<{
+    header: { cwd?: string }
+  } | undefined>
+  open(id: string, access: 'read', options?: { signal?: AbortSignal }): Promise<SessionReadHandle>
+}
+
+/** Read-only session handle used by the current persistence API. */
+interface SessionReadHandle {
+  header: { id: string; cwd?: string }
+  read(offset?: number, length?: number, options?: { signal?: AbortSignal }): Promise<readonly SessionLogEvent[]>
+  close(): Promise<void>
 }
 
 /** Minimal session-log event shape extracted for preview. */
@@ -233,9 +239,16 @@ export class WorkspaceArchive {
     }>
   }> {
     if (typeof sessionId !== 'string' || sessionId.length === 0) throw new TypeError('sessionId must be a non-empty string')
-    const { meta, events } = await this.persistence.readFrom(sessionId, 0)
+    const handle = await this.persistence.open(sessionId, 'read')
+    const meta = handle.header
+    let events: readonly SessionLogEvent[]
+    try {
+      events = await handle.read()
+    } finally {
+      await handle.close()
+    }
     // Title lives in the last session/title event when present.
-    let title: string | undefined = typeof meta.title === 'string' && meta.title.length > 0 ? meta.title : undefined
+    let title: string | undefined
     for (let i = events.length - 1; i >= 0; i--) {
       if (events[i].type === 'session/title') {
         const data = events[i].data ?? {}
@@ -325,8 +338,8 @@ export class WorkspaceArchive {
     if (workspace !== undefined) cwd = workspace.path
     else {
       try {
-        const inspection = await this.persistence.inspect(sessionId)
-        cwd = inspection.meta?.cwd
+        const snapshot = await this.persistence.stat(sessionId)
+        cwd = snapshot?.header.cwd
       } catch {
         cwd = undefined
       }

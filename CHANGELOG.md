@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- 兼容 DSH 当前 `SessionPersistence` handle API，修复已归档会话预览失败。
+
 ## [0.1.3] - 2026-08-22
 
 ### Fixed

@@ -21,6 +21,7 @@
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
+    "verify-preview": "node scripts/verify-preview.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dsh": {

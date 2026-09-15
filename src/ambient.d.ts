@@ -39,10 +39,18 @@ declare module 'cordis' {
       get(id: string): unknown
     }
     sessionPersistence: {
-      inspect(id: string, signal?: AbortSignal): Promise<{ meta?: { cwd?: string; title?: string } }>
-      readFrom(id: string, fromSeq: number, signal?: AbortSignal): Promise<{
-        meta: { id: string; cwd?: string; title?: string }
-        events: Array<{ seq: number; type: string; data?: Record<string, unknown>; time?: number }>
+      stat(id: string, options?: { signal?: AbortSignal }): Promise<{
+        header: { id: string; cwd?: string }
+      } | undefined>
+      open(id: string, access: 'read', options?: { signal?: AbortSignal }): Promise<{
+        header: { id: string; cwd?: string }
+        read(offset?: number, length?: number, options?: { signal?: AbortSignal }): Promise<readonly Array<{
+          seq: number
+          type: string
+          data?: Record<string, unknown>
+          time?: number
+        }>>
+        close(): Promise<void>
       }>
     }
     webServer?: {
